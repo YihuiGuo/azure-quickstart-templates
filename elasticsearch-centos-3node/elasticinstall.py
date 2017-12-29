@@ -1,18 +1,17 @@
 #!/usr/bin/env python
-
 import subprocess
 import socket
 import sys
 
 clustername = sys.argv[1]
 number_nodes = sys.argv[2]
-accountname = sys.argv[3] 
+accountname = sys.argv[3]
 accountkey =  sys.argv[4]
 
-print"inputs:\n"
-print "clustername = " + clustername 
-print "accontname = " + accountname 
-print "accountkey = " + accountkey 
+print "inputs:\n"
+print "clustername = " + clustername
+print "accontname = " + accountname
+print "accountkey = " + accountkey
 
 hostname = socket.gethostname()
 print "hostname: " + hostname
@@ -22,31 +21,46 @@ print "hostbase: " + hostbase
 
 
 def RunCommand(cmd):
-	ret = subprocess.check_output(cmd, shell=True)
-	print ret
-	return
+        ret = subprocess.check_output(cmd, shell=True)
+        print ret
+        return
 
 
-cmds = ["yum -y install nano",
-	"yum -y install java-1.8.0-openjdk.x86_64",
-	"curl 'https://download.elastic.co/elasticsearch/elasticsearch/elasticsearch-1.7.3.noarch.rpm' -o 'elasticsearch-1.7.3.noarch.rpm'",
-	"rpm -ivh elasticsearch-1.7.3.noarch.rpm",
-	"systemctl enable elasticsearch.service",
-	"/usr/share/elasticsearch/bin/plugin -install royrusso/elasticsearch-HQ",
-	"/usr/share/elasticsearch/bin/plugin -install elasticsearch/elasticsearch-cloud-azure/2.8.2"]
-
+cmds = [" yum -y install nano",
+        " yum -y install java-1.8.0-openjdk.x86_64",
+        " rpm --import https://artifacts.elastic.co/GPG-KEY-elasticsearch"
+        ]
 print "start running installs"
 for cmd in cmds:
-	RunCommand(cmd)
+        RunCommand(cmd)
+
+RunCommand(" touch /etc/yum.repos.d/elasticsearch.repo")
+RunCommand(" chmod 777 /etc/yum.repos.d/elasticsearch.repo")
+repo = open('/etc/yum.repos.d/elasticsearch.repo', 'w')
+repo.truncate()
+repo.write("""[elasticsearch-6.x]
+name=Elasticsearch repository for 6.x packages
+baseurl=https://artifacts.elastic.co/packages/6.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=1
+autorefresh=1
+type=rpm-md
+""")
+repo.close()
+RunCommand("exit")
+RunCommand("yum -y install elasticsearch")
+RunCommand("systemctl daemon-reload")
+RunCommand("systemctl enable elasticsearch.service")
 
 print "prep data disk for use"
 cmds=["sfdisk /dev/sdc < sdc.layout",
-	"mkfs -t ext4 /dev/sdc1",
-	"mkdir /data",
-	"mount /dev/sdc1 /data"]
+        "mkfs -t ext4 /dev/sdc1",
+        "mkdir /data",
+        "mount /dev/sdc1 /data"]
 
 for cmd in cmds:
-	RunCommand(cmd)
+        RunCommand(cmd)
 
 temp = subprocess.check_output("blkid /dev/sdc1", shell=True)
 uuid = temp[17:53]
@@ -59,10 +73,10 @@ print RunCommand("chmod go+w /data")
 datapath = "/data/elastic"
 
 cmds=["mkdir " + datapath,
-	"chown -R elasticsearch:elasticsearch " + datapath,
-	"chmod 755 " + datapath]
+        "chown -R elasticsearch:elasticsearch " + datapath,
+        "chmod 755 " + datapath]
 for cmd in cmds:
-	RunCommand(cmd)
+        RunCommand(cmd)
 
 
 #re-write conf for heap
@@ -73,13 +87,13 @@ sysconfig = open(sysconf, 'w')
 sysconfig.truncate()
 sysconfig.write("ES_HEAP_SIZE=" + heapsize + "\n")
 sysconfig.close()
-
+RunCommand("systemctl daemon-reload")
 print "start writing elastic config"
 
 # write config
 hosts=""
 for n in range(0, int(number_nodes)):
-	hosts=hosts+hostbase+str(n)+","
+        hosts=hosts+hostbase+str(n)+","
 hosts=hosts[:-1]
 
 
@@ -94,16 +108,15 @@ config.write("discovery.zen.ping.multicast.enabled: false\n")
 config.write("discovery.zen.ping.unicast.hosts: " + hosts + "\n")
 config.write("node.master: true\n")
 config.write("node.data: true\n")
-config.write("cloud:\n") 
+config.write("cloud:\n")
 config.write("  azure:\n")
 config.write("    storage:\n")
 config.write("       account: " + accountname + "\n")
 config.write("       key: " + accountkey + "\n")
 config.close()
 
-print "finished writing config file" 
+print "finished writing config file"
 
 
 RunCommand("systemctl start elasticsearch")
 print "elastic install script finished"
-
